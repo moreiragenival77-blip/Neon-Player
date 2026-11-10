@@ -121,6 +121,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         else await NativePlaylist.selectTrackById({ id });
         return true;
       } catch (error) {
+        console.error("[Neon Player] Falha na reprodução Android:", error);
         toast.error(error instanceof Error ? error.message : "Não foi possível preparar o áudio nativo.");
         setPlaying(false);
         return false;
@@ -172,7 +173,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const payload = status.value as { currentPosition?: number; duration?: number; currentItem?: { trackId: string } | null; message?: string } | undefined;
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_ERROR) {
           setPlaying(false);
-          toast.error(payload?.message || "O Android não conseguiu decodificar este arquivo de áudio.");
+          const detail = payload?.message || "O Android não conseguiu decodificar este arquivo de áudio.";
+          toast.error(detail);
           return;
         }
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYING) setPlaying(true);
