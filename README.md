@@ -1,4 +1,4 @@
-# Neon Player
+# GF Play
 
 Reprodutor de música **offline**: sem login, sem anúncios, sem streaming e sem servidor.
 A biblioteca e os metadados ficam no aparelho.
