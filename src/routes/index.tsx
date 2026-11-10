@@ -12,9 +12,9 @@ import icon from "@/assets/icon.svg";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Neon Player — música offline" },
+      { title: "GF Play — música offline" },
       { name: "description", content: "Reprodutor de música offline, privado e sem anúncios." },
-      { property: "og:title", content: "Neon Player" },
+      { property: "og:title", content: "GF Play" },
       { property: "og:description", content: "Reprodutor de música offline, privado e sem anúncios." },
     ],
   }),
@@ -61,7 +61,7 @@ function App() {
       <header className="flex items-center justify-between py-2">
         <div className="flex items-center gap-2">
           <img src={icon} alt="" width={32} height={32} className="h-8 w-8 rounded-lg" />
-          <h1 className="font-display text-lg font-semibold tracking-tight">Neon Player</h1>
+          <h1 className="font-display text-lg font-semibold tracking-tight">GF Play</h1>
         </div>
         <button onClick={() => fileRef.current?.click()} aria-label="Importar músicas" className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold transition-colors hover:bg-surface-2">
           <Plus className="h-5 w-5 text-primary" />
