@@ -103,18 +103,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const load = useCallback(async (id: string, autoplay = true) => {
     if (isAndroidNative()) {
       try {
-        const ids = stateRef.current.queue.length ? stateRef.current.queue : [id];
-        const nativeItems = [];
-        // Convert tracks one at a time to avoid loading multiple large audio
-        // files into WebView memory simultaneously.
-        for (const trackId of ids) {
-          const track = tracksRef.current.find((item) => item.id === trackId);
-          const blob = await db.getFile(trackId).catch(() => undefined);
-          if (!track || !blob) throw new Error("Arquivo de áudio não encontrado.");
-          nativeItems.push(await makeNativeAudioTrack(track, blob));
-        }
+        // Prepare only the selected song. Converting the entire queue before
+        // playback caused long waits and could exhaust memory on large libraries.
+        const track = tracksRef.current.find((item) => item.id === id);
+        const blob = await db.getFile(id).catch(() => undefined);
+        if (!track || !blob) throw new Error("Arquivo de áudio não encontrado.");
+        const nativeItem = await makeNativeAudioTrack(track, blob);
         await initializeNativeAudio();
-        await NativePlaylist.setPlaylistItems({ items: nativeItems, options: { startPaused: true } });
+        await NativePlaylist.setPlaylistItems({ items: [nativeItem], options: { startPaused: true } });
         setCurrentId(id);
         setTime(0);
         if (autoplay) await NativePlaylist.playTrackById({ id });
@@ -188,14 +184,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           const nextId = payload.currentItem?.trackId;
           if (nextId) { setCurrentId(nextId); setTime(0); setDuration(0); }
         }
-        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYLIST_COMPLETED) setPlaying(false);
-        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_COMPLETED && stateRef.current.repeat === "one" && stateRef.current.currentId) {
-          void NativePlaylist.playTrackById({ id: stateRef.current.currentId });
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYLIST_COMPLETED) {
+          // Only the current file is loaded natively. Advance through the
+          // in-app queue and prepare the next file on demand.
+          step(1, true);
         }
       });
       if (cancelled) await listener.remove();
       await NativePlaylist.setPlaybackVolume({ volume: volume });
-      await NativePlaylist.setLoop({ loop: repeat === "all" });
+      await NativePlaylist.setLoop({ loop: false });
     }).catch(() => toast.error("Não foi possível iniciar o reprodutor Android."));
     return () => { cancelled = true; if (listener) void listener.remove(); };
   }, []);
@@ -227,7 +224,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [volume]);
 
   useEffect(() => {
-    if (isAndroidNative()) void initializeNativeAudio().then(() => NativePlaylist.setLoop({ loop: repeat === "all" })).catch(() => undefined);
+    if (isAndroidNative()) void initializeNativeAudio().then(() => NativePlaylist.setLoop({ loop: false })).catch(() => undefined);
   }, [repeat]);
 
   const toggle = useCallback(() => {
@@ -284,27 +281,35 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const importFiles = useCallback(async (list: FileList | File[]) => {
     const files = Array.from(list);
     let ok = 0, bad = 0;
-    const added: Track[] = [];
     const newCovers: Record<string, string> = {};
-    for (const f of files) {
+    const importOne = async (f: File) => {
       const probe = new Audio();
-      if (!f.type.startsWith("audio/") && !/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i.test(f.name)) { bad++; continue; }
-      if (!isAndroidNative() && f.type && probe.canPlayType(f.type) === "") { bad++; continue; }
-      const url = URL.createObjectURL(f);
-      const dur = isAndroidNative() ? undefined : await probeDuration(url);
-      URL.revokeObjectURL(url);
-      if (!isAndroidNative() && dur === undefined && f.type !== "") { bad++; continue; }
+      if (!f.type.startsWith("audio/") && !/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i.test(f.name)) { bad++; return; }
+      if (!isAndroidNative() && f.type && probe.canPlayType(f.type) === "") { bad++; return; }
+      let dur: number | undefined;
+      if (!isAndroidNative()) {
+        const url = URL.createObjectURL(f);
+        dur = await probeDuration(url);
+        URL.revokeObjectURL(url);
+        if (dur === undefined && f.type !== "") { bad++; return; }
+      }
       const meta = await readMeta(f);
       const t: Track = { id: uid(), ...meta, duration: dur, addedAt: Date.now(), mime: f.type, fileName: f.name };
       try {
         await db.putFile(t.id, f);
         await db.putTrack(t);
-        added.push(t);
         if (t.cover) newCovers[t.id] = URL.createObjectURL(t.cover);
         ok++;
       } catch { bad++; }
+    };
+    // Process a small batch concurrently to reduce import time without
+    // opening too many large file operations at once.
+    for (let i = 0; i < files.length; i += 3) {
+      await Promise.all(files.slice(i, i + 3).map(importOne));
     }
-    setTracks((prev) => [...prev, ...added].sort((a, b) => a.title.localeCompare(b.title)));
+    const added = await db.allTracks();
+    added.sort((a, b) => a.title.localeCompare(b.title));
+    setTracks(added);
     setCovers((c) => ({ ...c, ...newCovers }));
     if (ok) toast.success(`${ok} música${ok > 1 ? "s" : ""} adicionada${ok > 1 ? "s" : ""}`);
     if (bad) toast.error(`${bad} arquivo${bad > 1 ? "s" : ""} inválido${bad > 1 ? "s" : ""} ou não suportado${bad > 1 ? "s" : ""}`);
