@@ -166,11 +166,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     let listener: { remove: () => Promise<void> } | undefined;
     initializeNativeAudio().then(async () => {
       listener = await NativePlaylist.addListener("status", ({ status }) => {
-        const payload = status.value as { currentPosition?: number; duration?: number; currentItem?: { trackId: string } | null; message?: string } | undefined;
+        const payload = status.value as { currentPosition?: number; duration?: number; currentItem?: { trackId: string } | null; message?: string; code?: number } | undefined;
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_ERROR) {
           setPlaying(false);
-          const detail = payload?.message || "O Android não conseguiu decodificar este arquivo de áudio.";
-          toast.error(detail);
+          const failedTrack = tracksRef.current.find((item) => item.id === (payload?.currentItem?.trackId ?? stateRef.current.currentId));
+          const reason = payload?.message || "O Android não conseguiu decodificar o áudio.";
+          const code = typeof payload?.code === "number" ? ` (código ${payload.code})` : "";
+          console.error("[Neon Player] Erro ao reproduzir faixa:", { title: failedTrack?.title, fileName: failedTrack?.fileName, mime: failedTrack?.mime, code: payload?.code, message: reason });
+          toast.error(`${failedTrack?.title ? `${failedTrack.title}: ` : ""}${reason}${code}`);
           return;
         }
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYING) setPlaying(true);
@@ -284,7 +287,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const newCovers: Record<string, string> = {};
     const importOne = async (f: File) => {
       const probe = new Audio();
-      if (!f.type.startsWith("audio/") && !/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i.test(f.name)) { bad++; return; }
+      // Accept common audio containers/codecs used by Android Media3. A file's
+      // extension alone cannot guarantee its codec is supported by the device.
+      const supportedAudioExtensions = /\.(mp3|m4a|m4b|mp4|aac|adts|ogg|oga|opus|wav|flac|webm|mkv|mka|amr|3gp|3gpp)$/i;
+      if (!f.type.toLowerCase().startsWith("audio/") && !supportedAudioExtensions.test(f.name)) { bad++; return; }
       if (!isAndroidNative() && f.type && probe.canPlayType(f.type) === "") { bad++; return; }
       let dur: number | undefined;
       if (!isAndroidNative()) {
