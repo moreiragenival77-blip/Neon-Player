@@ -39,6 +39,12 @@ function extensionFor(track: Track) {
     "audio/x-wav": "wav",
     "audio/flac": "flac",
     "audio/webm": "webm",
+    "audio/3gpp": "3gp",
+    "audio/amr": "amr",
+    "audio/x-flac": "flac",
+    "audio/x-wav": "wav",
+    "audio/x-m4a": "m4a",
+    "audio/aacp": "aac",
   };
   return known[track.mime] ?? "audio";
 }
