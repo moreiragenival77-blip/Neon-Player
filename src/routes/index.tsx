@@ -63,10 +63,20 @@ function App() {
           <img src={icon} alt="" width={32} height={32} className="h-8 w-8 rounded-lg" />
           <h1 className="font-display text-lg font-semibold tracking-tight">Neon Player</h1>
         </div>
-        <button onClick={() => fileRef.current?.click()} aria-label="Importar músicas" className="flex h-12 w-12 items-center justify-center rounded-full hover:bg-surface">
-          <Plus className="h-6 w-6" />
+        <button onClick={() => fileRef.current?.click()} aria-label="Importar músicas" className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-surface px-4 text-sm font-semibold transition-colors hover:bg-surface-2">
+          <Plus className="h-5 w-5 text-primary" />
+          <span className="hidden sm:inline">Adicionar</span>
         </button>
       </header>
+
+      <section className="mb-5 mt-7 flex items-end justify-between gap-3">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-primary">Sua música. Seu espaço.</p>
+          <h2 className="mt-1 font-display text-3xl font-bold tracking-tight">Biblioteca</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{p.tracks.length} {p.tracks.length === 1 ? "faixa salva" : "faixas salvas"} neste aparelho</p>
+        </div>
+        {p.tracks.length > 0 && <button onClick={() => fileRef.current?.click()} className="mb-1 hidden h-10 items-center gap-2 rounded-full bg-neon px-4 text-sm font-semibold text-primary-foreground shadow-neon sm:inline-flex"><Plus className="h-4 w-4" /> Importar</button>}
+      </section>
 
       {p.current && (
         <section aria-label="Tocando agora" className="mt-3">
