@@ -8,6 +8,7 @@ export type Track = {
   cover?: Blob | undefined;
   addedAt: number;
   mime: string;
+  fileName?: string;
 };
 
 const DB = "neon-player";
