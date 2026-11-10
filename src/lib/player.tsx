@@ -100,6 +100,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef({ queue, currentId, shuffle, repeat });
   stateRef.current = { queue, currentId, shuffle, repeat };
 
+  // Save the duration reported by Android Media3 so it appears in the library
+  // after a track has been opened at least once.
+  const savedDurations = useRef(new Set<string>());
+  const persistDuration = useCallback((id: string | undefined, seconds: number) => {
+    if (!id || !Number.isFinite(seconds) || seconds <= 0 || savedDurations.current.has(id)) return;
+    const track = tracksRef.current.find((item) => item.id === id);
+    if (!track || (track.duration && Math.abs(track.duration - seconds) < 1)) return;
+    savedDurations.current.add(id);
+    const updated = { ...track, duration: seconds };
+    tracksRef.current = tracksRef.current.map((item) => item.id === id ? updated : item);
+    setTracks((items) => items.map((item) => item.id === id ? updated : item));
+    void db.putTrack(updated).catch((error) => {
+      savedDurations.current.delete(id);
+      console.error("[GF Play] Não foi possível salvar a duração da faixa:", error);
+    });
+  }, []);
+
   const load = useCallback(async (id: string, autoplay = true) => {
     if (isAndroidNative()) {
       try {
@@ -179,10 +196,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYING) setPlaying(true);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PAUSE || status.msgType === RmxAudioStatusMessage.RMXSTATUS_STOPPED) setPlaying(false);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYBACK_POSITION) {
-          if (typeof payload.currentPosition === "number") setTime(payload.currentPosition);
-          if (typeof payload.duration === "number" && payload.duration > 0) setDuration(payload.duration);
+          if (typeof payload?.currentPosition === "number") setTime(payload.currentPosition);
+          if (typeof payload?.duration === "number" && payload.duration > 0) {
+            setDuration(payload.duration);
+            persistDuration(payload.currentItem?.trackId ?? stateRef.current.currentId, payload.duration);
+          }
         }
-        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_DURATION && typeof payload.duration === "number") setDuration(payload.duration);
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_DURATION && typeof payload?.duration === "number" && payload.duration > 0) {
+          setDuration(payload.duration);
+          persistDuration(payload.currentItem?.trackId ?? stateRef.current.currentId, payload.duration);
+        }
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_TRACK_CHANGED) {
           const nextId = payload.currentItem?.trackId;
           if (nextId) { setCurrentId(nextId); setTime(0); setDuration(0); }
@@ -198,7 +221,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       await NativePlaylist.setLoop({ loop: false });
     }).catch(() => toast.error("Não foi possível iniciar o reprodutor Android."));
     return () => { cancelled = true; if (listener) void listener.remove(); };
-  }, []);
+  }, [persistDuration]);
 
   // Audio element + events (web fallback only)
   useEffect(() => {
