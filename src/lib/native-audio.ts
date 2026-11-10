@@ -58,7 +58,8 @@ function blobChunkAsBase64(blob: Blob): Promise<string> {
 // Write in small pieces: converting an entire large song to one base64 string
 // can exhaust Android WebView memory and close the app.
 async function saveBlob(path: string, blob: Blob) {
-  const chunkSize = 1024 * 1024;
+  // Base64 chunks must end on a 3-byte boundary; otherwise each chunk's padding corrupts the joined audio file.
+  const chunkSize = 3 * 256 * 1024;
   for (let offset = 0; offset < blob.size; offset += chunkSize) {
     const chunk = blob.slice(offset, Math.min(offset + chunkSize, blob.size));
     const data = await blobChunkAsBase64(chunk);
