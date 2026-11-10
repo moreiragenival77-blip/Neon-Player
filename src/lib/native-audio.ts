@@ -68,7 +68,12 @@ async function saveBlob(path: string, blob: Blob) {
       await Filesystem.appendFile({ path, data, directory: Directory.Data });
     }
   }
+  const info = await Filesystem.stat({ path, directory: Directory.Data });
+  if (!info.size || info.size !== blob.size) {
+    throw new Error("O arquivo de áudio não foi copiado corretamente para o armazenamento do Android.");
+  }
   const result = await Filesystem.getUri({ path, directory: Directory.Data });
+  if (!result.uri) throw new Error("O Android não forneceu o endereço do arquivo de áudio.");
   return result.uri;
 }
 
@@ -95,8 +100,10 @@ export async function makeNativeAudioTrack(track: Track, audio: Blob): Promise<A
     artist: track.artist,
     album: track.album ?? "",
     albumArt,
+    // Leave mimeType unset for ordinary local files. Media3 detects MP3,
+    // AAC, OGG, WAV and FLAC from the file/container; passing browser MIME
+    // strings here can override that detection on some Android devices.
     isStream: false,
-    mimeType: track.mime || undefined,
   };
   nativeTrackCache.set(cacheKey, nativeTrack);
   return nativeTrack;
