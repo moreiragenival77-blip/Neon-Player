@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { toast } from "sonner";
 import { db, type Track } from "./db";
 import { probeDuration, readMeta } from "./metadata";
-import { initializeNativeAudio, isAndroidNative, makeNativeAudioTrack, Playlist, RmxAudioStatusMessage } from "./native-audio";
+import { initializeNativeAudio, isAndroidNative, makeNativeAudioTrack, Playlist as NativePlaylist, RmxAudioStatusMessage } from "./native-audio";
 
 export type Repeat = "off" | "all" | "one";
 export type Playlist = { id: string; name: string; trackIds: string[] };
@@ -111,11 +111,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           return makeNativeAudioTrack(track, blob);
         }));
         await initializeNativeAudio();
-        await Playlist.setPlaylistItems({ items: nativeItems, options: { startPaused: true } });
+        await NativePlaylist.setPlaylistItems({ items: nativeItems, options: { startPaused: true } });
         setCurrentId(id);
         setTime(0);
-        if (autoplay) await Playlist.playTrackById({ id });
-        else await Playlist.selectTrackById({ id });
+        if (autoplay) await NativePlaylist.playTrackById({ id });
+        else await NativePlaylist.selectTrackById({ id });
         return true;
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Não foi possível preparar o áudio nativo.");
@@ -165,7 +165,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     let listener: { remove: () => Promise<void> } | undefined;
     initializeNativeAudio().then(async () => {
-      listener = await Playlist.addListener("status", ({ status }) => {
+      listener = await NativePlaylist.addListener("status", ({ status }) => {
         const payload = status.value as { currentPosition?: number; duration?: number; currentItem?: { trackId: string } | null };
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYING) setPlaying(true);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PAUSE || status.msgType === RmxAudioStatusMessage.RMXSTATUS_STOPPED) setPlaying(false);
@@ -180,12 +180,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYLIST_COMPLETED) setPlaying(false);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_COMPLETED && stateRef.current.repeat === "one" && stateRef.current.currentId) {
-          void Playlist.playTrackById({ id: stateRef.current.currentId });
+          void NativePlaylist.playTrackById({ id: stateRef.current.currentId });
         }
       });
       if (cancelled) await listener.remove();
-      await Playlist.setPlaybackVolume({ volume: volume });
-      await Playlist.setLoop({ loop: repeat === "all" });
+      await NativePlaylist.setPlaybackVolume({ volume: volume });
+      await NativePlaylist.setLoop({ loop: repeat === "all" });
     }).catch(() => toast.error("Não foi possível iniciar o reprodutor Android."));
     return () => { cancelled = true; if (listener) void listener.remove(); };
   }, []);
@@ -212,19 +212,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [step]);
 
   useEffect(() => {
-    if (isAndroidNative()) { void initializeNativeAudio().then(() => Playlist.setPlaybackVolume({ volume })).catch(() => undefined); return; }
+    if (isAndroidNative()) { void initializeNativeAudio().then(() => NativePlaylist.setPlaybackVolume({ volume })).catch(() => undefined); return; }
     if (audio.current) audio.current.volume = volume;
   }, [volume]);
 
   useEffect(() => {
-    if (isAndroidNative()) void initializeNativeAudio().then(() => Playlist.setLoop({ loop: repeat === "all" })).catch(() => undefined);
+    if (isAndroidNative()) void initializeNativeAudio().then(() => NativePlaylist.setLoop({ loop: repeat === "all" })).catch(() => undefined);
   }, [repeat]);
 
   const toggle = useCallback(() => {
     if (isAndroidNative()) {
       const q = stateRef.current.queue;
       if (!currentId && q[0]) { void load(q[0]); return; }
-      void initializeNativeAudio().then(() => playing ? Playlist.pause() : Playlist.play()).catch(() => toast.error("Não foi possível controlar a reprodução."));
+      void initializeNativeAudio().then(() => playing ? NativePlaylist.pause() : NativePlaylist.play()).catch(() => toast.error("Não foi possível controlar a reprodução."));
       return;
     }
     const a = audio.current;
@@ -235,7 +235,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [load, currentId, playing]);
 
   const seek = useCallback((t: number) => {
-    if (isAndroidNative()) { void Playlist.seekTo({ position: t }).catch(() => undefined); return; }
+    if (isAndroidNative()) { void NativePlaylist.seekTo({ position: t }).catch(() => undefined); return; }
     if (audio.current) audio.current.currentTime = t;
   }, []);
   const next = useCallback(() => step(1), [step]);
@@ -307,7 +307,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [load]);
 
   const removeTrack = useCallback(async (id: string) => {
-    if (isAndroidNative()) void Playlist.removeItem({ id }).catch(() => undefined);
+    if (isAndroidNative()) void NativePlaylist.removeItem({ id }).catch(() => undefined);
     await db.remove(id).catch(() => undefined);
     setTracks((t) => t.filter((x) => x.id !== id));
     setQueue((q) => q.filter((x) => x !== id));
