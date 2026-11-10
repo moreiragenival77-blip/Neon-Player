@@ -104,12 +104,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (isAndroidNative()) {
       try {
         const ids = stateRef.current.queue.length ? stateRef.current.queue : [id];
-        const nativeItems = await Promise.all(ids.map(async (trackId) => {
+        const nativeItems = [];
+        // Convert tracks one at a time to avoid loading multiple large audio
+        // files into WebView memory simultaneously.
+        for (const trackId of ids) {
           const track = tracksRef.current.find((item) => item.id === trackId);
           const blob = await db.getFile(trackId).catch(() => undefined);
           if (!track || !blob) throw new Error("Arquivo de áudio não encontrado.");
-          return makeNativeAudioTrack(track, blob);
-        }));
+          nativeItems.push(await makeNativeAudioTrack(track, blob));
+        }
         await initializeNativeAudio();
         await NativePlaylist.setPlaylistItems({ items: nativeItems, options: { startPaused: true } });
         setCurrentId(id);
@@ -166,7 +169,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     let listener: { remove: () => Promise<void> } | undefined;
     initializeNativeAudio().then(async () => {
       listener = await NativePlaylist.addListener("status", ({ status }) => {
-        const payload = status.value as { currentPosition?: number; duration?: number; currentItem?: { trackId: string } | null };
+        const payload = status.value as { currentPosition?: number; duration?: number; currentItem?: { trackId: string } | null; message?: string } | undefined;
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_ERROR) {
+          setPlaying(false);
+          toast.error(payload?.message || "O Android não conseguiu decodificar este arquivo de áudio.");
+          return;
+        }
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYING) setPlaying(true);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PAUSE || status.msgType === RmxAudioStatusMessage.RMXSTATUS_STOPPED) setPlaying(false);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYBACK_POSITION) {
@@ -246,7 +254,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Media Session (progressive enhancement; does NOT guarantee background playback)
   useEffect(() => {
-    if (!("mediaSession" in navigator) || !current) return;
+    if (isAndroidNative() || !("mediaSession" in navigator) || typeof MediaMetadata === "undefined" || !current) return;
     navigator.mediaSession.metadata = new MediaMetadata({
       title: current.title,
       artist: current.artist,
@@ -281,7 +289,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (!f.type.startsWith("audio/") && !/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i.test(f.name)) { bad++; continue; }
       if (!isAndroidNative() && f.type && probe.canPlayType(f.type) === "") { bad++; continue; }
       const url = URL.createObjectURL(f);
-      const dur = await probeDuration(url);
+      const dur = isAndroidNative() ? undefined : await probeDuration(url);
       URL.revokeObjectURL(url);
       if (!isAndroidNative() && dur === undefined && f.type !== "") { bad++; continue; }
       const meta = await readMeta(f);
