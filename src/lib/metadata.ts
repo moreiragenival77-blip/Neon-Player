@@ -22,7 +22,7 @@ export async function readMeta(file: File): Promise<Meta> {
     if (head[0] !== 0x49 || head[1] !== 0x44 || head[2] !== 0x33) return fb;
     const ver = head[3];
     const size = ((head[6] & 127) << 21) | ((head[7] & 127) << 14) | ((head[8] & 127) << 7) | (head[9] & 127);
-    const buf = new Uint8Array(await file.slice(10, 10 + Math.min(size, 8_000_000)).arrayBuffer());
+    const buf = new Uint8Array(await file.slice(10, 10 + Math.min(size, 1_000_000)).arrayBuffer());
     const out: Partial<Meta> = {};
     let i = 0;
     while (i + 10 < buf.length) {
@@ -40,12 +40,18 @@ export async function readMeta(file: File): Promise<Meta> {
       else if (id === "APIC") {
         const enc = body[0];
         let p = 1;
-        while (body[p] !== 0) p++;
+        while (p < body.length && body[p] !== 0) p++;
+        if (p >= body.length) { i += 10 + fs; continue; }
         const mime = new TextDecoder("latin1").decode(body.slice(1, p)) || "image/jpeg";
         p += 2; // null + picture type
-        if (enc === 1 || enc === 2) { while (!(body[p] === 0 && body[p + 1] === 0)) p += 2; p += 2; }
-        else { while (body[p] !== 0) p++; p++; }
-        out.cover = new Blob([body.slice(p)], { type: mime });
+        if (enc === 1 || enc === 2) {
+          while (p + 1 < body.length && !(body[p] === 0 && body[p + 1] === 0)) p += 2;
+          p += 2;
+        } else {
+          while (p < body.length && body[p] !== 0) p++;
+          p++;
+        }
+        if (p < body.length) out.cover = new Blob([body.slice(p)], { type: mime });
       }
       i += 10 + fs;
     }
