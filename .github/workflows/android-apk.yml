@@ -40,7 +40,7 @@ jobs:
           path = Path("android/build.gradle")
           content = path.read_text()
           if "kotlin_version" not in content:
-              path.write_text("ext.kotlin_version = '2.2.20'\\n" + content)
+              path.write_text("ext.kotlin_version = '2.2.20'\n" + content)
           PY
 
       - name: Sync native plugins
