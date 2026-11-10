@@ -3,7 +3,7 @@
 const config = {
   appId: "com.gfgamedev.neonplayer",
   appName: "Neon Player",
-  webDir: "dist/client",
+  webDir: ".output/public",
   android: { backgroundColor: "#0f0f14" },
 };
 
