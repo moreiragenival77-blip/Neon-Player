@@ -48,23 +48,23 @@
   --card-foreground: oklch(0.96 0.005 270);
   --popover: oklch(0.2 0.01 270);
   --popover-foreground: oklch(0.96 0.005 270);
-  --primary: oklch(0.64 0.24 292);
-  --primary-glow: oklch(0.7 0.18 245);
-  --electric: oklch(0.72 0.17 235);
+  --primary: oklch(0.72 0.19 150);
+  --primary-glow: oklch(0.78 0.16 145);
+  --electric: oklch(0.78 0.18 175);
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.225 0.01 270);
   --secondary-foreground: oklch(0.96 0.005 270);
   --muted: oklch(0.225 0.01 270);
   --muted-foreground: oklch(0.66 0.015 270);
-  --accent: oklch(0.26 0.03 285);
+  --accent: oklch(0.25 0.045 150);
   --accent-foreground: oklch(0.96 0.005 270);
   --destructive: oklch(0.65 0.2 22);
   --destructive-foreground: oklch(0.99 0 0);
   --border: oklch(1 0 0 / 8%);
   --input: oklch(1 0 0 / 10%);
-  --ring: oklch(0.64 0.24 292);
-  --gradient-neon: linear-gradient(135deg, var(--primary), var(--electric));
-  --shadow-neon: 0 12px 40px -12px color-mix(in oklab, var(--primary) 60%, transparent);
+  --ring: oklch(0.72 0.19 150);
+  --gradient-neon: linear-gradient(135deg, oklch(0.72 0.19 150), oklch(0.78 0.18 175));
+  --shadow-neon: 0 12px 40px -12px color-mix(in oklab, var(--primary) 48%, transparent);
 }
 
 @layer base {
