@@ -9,6 +9,7 @@ export const isAndroidNative = () =>
 let initialized = false;
 let initialization: Promise<void> | undefined;
 const nativeTrackCache = new Map<string, AudioTrack>();
+const nativeTrackPending = new Map<string, Promise<AudioTrack>>();
 
 export async function initializeNativeAudio() {
   if (!isAndroidNative() || initialized) return;
@@ -58,6 +59,15 @@ function blobChunkAsBase64(blob: Blob): Promise<string> {
 // Write in small pieces: converting an entire large song to one base64 string
 // can exhaust Android WebView memory and close the app.
 async function saveBlob(path: string, blob: Blob) {
+  try {
+    const existing = await Filesystem.stat({ path, directory: Directory.Data });
+    if (existing.size === blob.size && blob.size > 0) {
+      const saved = await Filesystem.getUri({ path, directory: Directory.Data });
+      if (saved.uri) return saved.uri;
+    }
+  } catch {
+    // No cached native file yet; copy it below.
+  }
   // Base64 chunks must end on a 3-byte boundary; otherwise each chunk's padding corrupts the joined audio file.
   const chunkSize = 3 * 256 * 1024;
   for (let offset = 0; offset < blob.size; offset += chunkSize) {
@@ -78,36 +88,31 @@ async function saveBlob(path: string, blob: Blob) {
   return result.uri;
 }
 
-export async function makeNativeAudioTrack(track: Track, audio: Blob): Promise<AudioTrack> {
+export function makeNativeAudioTrack(track: Track, audio: Blob): Promise<AudioTrack> {
   const cacheKey = `${track.id}:${track.addedAt}:${audio.size}:${track.cover?.size ?? 0}`;
   const cached = nativeTrackCache.get(cacheKey);
-  if (cached) return cached;
-  const assetUrl = await saveBlob(
-    `neon-audio/${track.id}.${extensionFor(track)}`,
-    audio,
-  );
-  let albumArt: string | undefined;
-  if (track.cover) {
-    try {
-      albumArt = await saveBlob(`neon-covers/${track.id}.jpg`, track.cover);
-    } catch {
-      // Artwork is optional; audio playback must remain available.
-    }
-  }
-  const nativeTrack: AudioTrack = {
-    trackId: track.id,
-    assetUrl,
-    title: track.title,
-    artist: track.artist,
-    album: track.album ?? "",
-    albumArt,
-    // Leave mimeType unset for ordinary local files. Media3 detects MP3,
-    // AAC, OGG, WAV and FLAC from the file/container; passing browser MIME
-    // strings here can override that detection on some Android devices.
-    isStream: false,
-  };
-  nativeTrackCache.set(cacheKey, nativeTrack);
-  return nativeTrack;
-}
+  if (cached) return Promise.resolve(cached);
+  const pending = nativeTrackPending.get(cacheKey);
+  if (pending) return pending;
 
+  const preparation = (async () => {
+    const assetUrl = await saveBlob(`neon-audio/${track.id}.${extensionFor(track)}`, audio);
+    let albumArt: string | undefined;
+    if (track.cover) {
+      try { albumArt = await saveBlob(`neon-covers/${track.id}.jpg`, track.cover); }
+      catch { /* Artwork is optional; audio playback must remain available. */ }
+    }
+    const nativeTrack: AudioTrack = {
+      trackId: track.id, assetUrl, title: track.title, artist: track.artist,
+      album: track.album ?? "", albumArt, isStream: false,
+    };
+    nativeTrackCache.set(cacheKey, nativeTrack);
+    return nativeTrack;
+  })();
+  nativeTrackPending.set(cacheKey, preparation);
+  void preparation.finally(() => {
+    if (nativeTrackPending.get(cacheKey) === preparation) nativeTrackPending.delete(cacheKey);
+  }).catch(() => undefined);
+  return preparation;
+}
 export { Playlist, RmxAudioStatusMessage };
