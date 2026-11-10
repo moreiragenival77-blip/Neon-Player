@@ -298,6 +298,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       try {
         await db.putFile(t.id, f);
         await db.putTrack(t);
+        // Prepare the Android copy in the background so selecting this song later is faster.
+        if (isAndroidNative()) void makeNativeAudioTrack(t, f).catch(() => undefined);
         if (t.cover) newCovers[t.id] = URL.createObjectURL(t.cover);
         ok++;
       } catch { bad++; }
