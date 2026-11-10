@@ -176,7 +176,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_DURATION && typeof payload.duration === "number") setDuration(payload.duration);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_TRACK_CHANGED) {
           const nextId = payload.currentItem?.trackId;
-          if (nextId) { setCurrentId(nextId); setTime(0); }
+          if (nextId) { setCurrentId(nextId); setTime(0); setDuration(0); }
         }
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYLIST_COMPLETED) setPlaying(false);
         if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_COMPLETED && stateRef.current.repeat === "one" && stateRef.current.currentId) {
@@ -279,11 +279,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     for (const f of files) {
       const probe = new Audio();
       if (!f.type.startsWith("audio/") && !/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac|webm)$/i.test(f.name)) { bad++; continue; }
-      if (f.type && probe.canPlayType(f.type) === "") { bad++; continue; }
+      if (!isAndroidNative() && f.type && probe.canPlayType(f.type) === "") { bad++; continue; }
       const url = URL.createObjectURL(f);
       const dur = await probeDuration(url);
       URL.revokeObjectURL(url);
-      if (dur === undefined && f.type !== "") { bad++; continue; }
+      if (!isAndroidNative() && dur === undefined && f.type !== "") { bad++; continue; }
       const meta = await readMeta(f);
       const t: Track = { id: uid(), ...meta, duration: dur, addedAt: Date.now(), mime: f.type, fileName: f.name };
       try {
