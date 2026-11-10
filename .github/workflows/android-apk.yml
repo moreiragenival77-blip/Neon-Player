@@ -33,6 +33,16 @@ jobs:
       - name: Generate Android project
         run: npx cap add android
 
+      - name: Configure Kotlin version for native plugins
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("android/build.gradle")
+          content = path.read_text()
+          if "kotlin_version" not in content:
+              path.write_text("ext.kotlin_version = '2.2.20'\\n" + content)
+          PY
+
       - name: Sync native plugins
         run: npx cap sync android
 
