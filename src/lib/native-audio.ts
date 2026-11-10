@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { Directory, Filesystem } from "@capacitor/filesystem";
-import { Playlist, type AudioTrack } from "capacitor-plugin-playlist";
+import { Playlist, RmxAudioStatusMessage, type AudioTrack } from "capacitor-plugin-playlist";
 import type { Track } from "./db";
 
 export const isAndroidNative = () =>
@@ -80,4 +80,4 @@ export async function makeNativeAudioTrack(track: Track, audio: Blob): Promise<A
   };
 }
 
-export { Playlist };
+export { Playlist, RmxAudioStatusMessage };
