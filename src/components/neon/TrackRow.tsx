@@ -21,7 +21,7 @@ export function TrackRow({ track, onPlay, playlistId }: { track: Track; onPlay: 
           <p className={cn("truncate font-medium", active && "text-neon")}>{track.title}</p>
           <p className="truncate text-sm text-muted-foreground">{track.artist}</p>
         </div>
-        <span className="text-xs tabular-nums text-muted-foreground">{fmt(track.duration)}</span>
+        <span className="min-w-9 text-right text-xs tabular-nums text-muted-foreground">{track.duration && track.duration > 0 ? fmt(track.duration) : "—"}</span>
       </button>
       {fav && <Heart className="h-4 w-4 fill-primary text-primary" aria-label="Favorita" />}
       <DropdownMenu>
