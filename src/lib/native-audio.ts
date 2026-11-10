@@ -38,7 +38,7 @@ function extensionFor(track: Track) {
   return known[track.mime] ?? "audio";
 }
 
-function blobAsBase64(blob: Blob): Promise<string> {
+function blobChunkAsBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => {
@@ -46,18 +46,24 @@ function blobAsBase64(blob: Blob): Promise<string> {
       const comma = result.indexOf(",");
       resolve(comma >= 0 ? result.slice(comma + 1) : result);
     };
-    reader.onerror = () => reject(reader.error);
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o arquivo de áudio."));
     reader.readAsDataURL(blob);
   });
 }
 
+// Write in small pieces: converting an entire large song to one base64 string
+// can exhaust Android WebView memory and close the app.
 async function saveBlob(path: string, blob: Blob) {
-  await Filesystem.writeFile({
-    path,
-    data: await blobAsBase64(blob),
-    directory: Directory.Data,
-    recursive: true,
-  });
+  const chunkSize = 1024 * 1024;
+  for (let offset = 0; offset < blob.size; offset += chunkSize) {
+    const chunk = blob.slice(offset, Math.min(offset + chunkSize, blob.size));
+    const data = await blobChunkAsBase64(chunk);
+    if (offset === 0) {
+      await Filesystem.writeFile({ path, data, directory: Directory.Data, recursive: true });
+    } else {
+      await Filesystem.appendFile({ path, data, directory: Directory.Data });
+    }
+  }
   const result = await Filesystem.getUri({ path, directory: Directory.Data });
   return result.uri;
 }
@@ -86,6 +92,7 @@ export async function makeNativeAudioTrack(track: Track, audio: Blob): Promise<A
     album: track.album ?? "",
     albumArt,
     isStream: false,
+    mimeType: track.mime || undefined,
   };
   nativeTrackCache.set(cacheKey, nativeTrack);
   return nativeTrack;
