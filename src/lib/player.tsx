@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { toast } from "sonner";
 import { db, type Track } from "./db";
 import { probeDuration, readMeta } from "./metadata";
+import { initializeNativeAudio, isAndroidNative, makeNativeAudioTrack, Playlist, RmxAudioStatusMessage } from "./native-audio";
 
 export type Repeat = "off" | "all" | "one";
 export type Playlist = { id: string; name: string; trackIds: string[] };
@@ -52,6 +53,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audio = useRef<HTMLAudioElement | null>(null);
   const urlRef = useRef<string | null>(null);
   const [tracks, setTracks] = useState<Track[]>([]);
+  const tracksRef = useRef<Track[]>([]);
+  tracksRef.current = tracks;
   const [covers, setCovers] = useState<Record<string, string>>({});
   const [ready, setReady] = useState(false);
   const [queue, setQueue] = useState<string[]>([]);
@@ -98,6 +101,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   stateRef.current = { queue, currentId, shuffle, repeat };
 
   const load = useCallback(async (id: string, autoplay = true) => {
+    if (isAndroidNative()) {
+      try {
+        const ids = stateRef.current.queue.length ? stateRef.current.queue : [id];
+        const nativeItems = await Promise.all(ids.map(async (trackId) => {
+          const track = tracksRef.current.find((item) => item.id === trackId);
+          const blob = await db.getFile(trackId).catch(() => undefined);
+          if (!track || !blob) throw new Error("Arquivo de áudio não encontrado.");
+          return makeNativeAudioTrack(track, blob);
+        }));
+        await initializeNativeAudio();
+        await Playlist.setPlaylistItems({ items: nativeItems, options: { startPaused: true } });
+        setCurrentId(id);
+        setTime(0);
+        if (autoplay) await Playlist.playTrackById({ id });
+        else await Playlist.selectTrackById({ id });
+        return true;
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Não foi possível preparar o áudio nativo.");
+        setPlaying(false);
+        return false;
+      }
+    }
     const a = audio.current!;
     const blob = await db.getFile(id).catch(() => undefined);
     if (!blob) {
@@ -134,8 +159,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     load(q[idx]!);
   }, [load]);
 
-  // Audio element + events
+  // Native Android Media3 session and lock-screen controls
   useEffect(() => {
+    if (!isAndroidNative()) return;
+    let cancelled = false;
+    let listener: { remove: () => Promise<void> } | undefined;
+    initializeNativeAudio().then(async () => {
+      listener = await Playlist.addListener("status", ({ status }) => {
+        const payload = status.value as { currentPosition?: number; duration?: number; currentItem?: { trackId: string } | null };
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYING) setPlaying(true);
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PAUSE || status.msgType === RmxAudioStatusMessage.RMXSTATUS_STOPPED) setPlaying(false);
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYBACK_POSITION) {
+          if (typeof payload.currentPosition === "number") setTime(payload.currentPosition);
+          if (typeof payload.duration === "number" && payload.duration > 0) setDuration(payload.duration);
+        }
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_DURATION && typeof payload.duration === "number") setDuration(payload.duration);
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_TRACK_CHANGED) {
+          const nextId = payload.currentItem?.trackId;
+          if (nextId) { setCurrentId(nextId); setTime(0); }
+        }
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_PLAYLIST_COMPLETED) setPlaying(false);
+        if (status.msgType === RmxAudioStatusMessage.RMXSTATUS_COMPLETED && stateRef.current.repeat === "one" && stateRef.current.currentId) {
+          void Playlist.playTrackById({ id: stateRef.current.currentId });
+        }
+      });
+      if (cancelled) await listener.remove();
+      await Playlist.setPlaybackVolume({ volume: volume });
+      await Playlist.setLoop({ loop: repeat === "all" });
+    }).catch(() => toast.error("Não foi possível iniciar o reprodutor Android."));
+    return () => { cancelled = true; if (listener) void listener.remove(); };
+  }, []);
+
+  // Audio element + events (web fallback only)
+  useEffect(() => {
+    if (isAndroidNative()) return;
     const a = new Audio();
     a.preload = "auto";
     audio.current = a;
@@ -154,22 +211,38 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => { a.pause(); a.src = ""; };
   }, [step]);
 
-  useEffect(() => { if (audio.current) audio.current.volume = volume; }, [volume]);
+  useEffect(() => {
+    if (isAndroidNative()) { void initializeNativeAudio().then(() => Playlist.setPlaybackVolume({ volume })).catch(() => undefined); return; }
+    if (audio.current) audio.current.volume = volume;
+  }, [volume]);
+
+  useEffect(() => {
+    if (isAndroidNative()) void initializeNativeAudio().then(() => Playlist.setLoop({ loop: repeat === "all" })).catch(() => undefined);
+  }, [repeat]);
 
   const toggle = useCallback(() => {
+    if (isAndroidNative()) {
+      const q = stateRef.current.queue;
+      if (!currentId && q[0]) { void load(q[0]); return; }
+      void initializeNativeAudio().then(() => playing ? Playlist.pause() : Playlist.play()).catch(() => toast.error("Não foi possível controlar a reprodução."));
+      return;
+    }
     const a = audio.current;
     if (!a) return;
     if (!a.src) { const q = stateRef.current.queue; if (q[0]) load(q[0]!); return; }
     if (a.paused) a.play().catch(() => toast.error("Não foi possível reproduzir."));
     else a.pause();
-  }, [load]);
+  }, [load, currentId, playing]);
 
-  const seek = useCallback((t: number) => { if (audio.current) audio.current.currentTime = t; }, []);
+  const seek = useCallback((t: number) => {
+    if (isAndroidNative()) { void Playlist.seekTo({ position: t }).catch(() => undefined); return; }
+    if (audio.current) audio.current.currentTime = t;
+  }, []);
   const next = useCallback(() => step(1), [step]);
   const prev = useCallback(() => {
-    if ((audio.current?.currentTime ?? 0) > 3) return seek(0);
+    if ((isAndroidNative() ? time : audio.current?.currentTime ?? 0) > 3) return seek(0);
     step(-1);
-  }, [step, seek]);
+  }, [step, seek, time]);
 
   // Media Session (progressive enhancement; does NOT guarantee background playback)
   useEffect(() => {
@@ -212,7 +285,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       URL.revokeObjectURL(url);
       if (dur === undefined && f.type !== "") { bad++; continue; }
       const meta = await readMeta(f);
-      const t: Track = { id: uid(), ...meta, duration: dur, addedAt: Date.now(), mime: f.type };
+      const t: Track = { id: uid(), ...meta, duration: dur, addedAt: Date.now(), mime: f.type, fileName: f.name };
       try {
         await db.putFile(t.id, f);
         await db.putTrack(t);
@@ -234,6 +307,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [load]);
 
   const removeTrack = useCallback(async (id: string) => {
+    if (isAndroidNative()) void Playlist.removeItem({ id }).catch(() => undefined);
     await db.remove(id).catch(() => undefined);
     setTracks((t) => t.filter((x) => x.id !== id));
     setQueue((q) => q.filter((x) => x !== id));
