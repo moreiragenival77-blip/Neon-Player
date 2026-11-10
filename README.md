@@ -1,42 +1,36 @@
 # Neon Player
 
-Reprodutor de música **offline**: sem login, sem anúncios, sem streaming, sem servidor.
-Arquivos e metadados ficam apenas no aparelho (IndexedDB + localStorage).
+Reprodutor de música **offline**: sem login, sem anúncios, sem streaming e sem servidor.
+A biblioteca e os metadados ficam no aparelho.
 
-## O que funciona hoje (web / preview)
-- Importar arquivos de áudio locais (mp3, m4a, aac, ogg/opus, wav, flac — conforme suporte do WebView).
-- Leitura local de ID3v2 (título, artista, álbum, capa); fallback pelo nome "Artista - Título".
-- Biblioteca, busca, favoritos, playlists locais, fila, aleatório, repetir (off/todas/uma), volume.
-- Tratamento de arquivo inválido / não suportado / removido sem travar (pula para a próxima).
-- Media Session API (metadados e botões de mídia) como **melhoria progressiva**.
+## Recursos
+- Importação de arquivos locais (MP3, M4A, AAC, OGG/Opus, WAV, FLAC — conforme suporte do dispositivo).
+- Leitura local de metadados e capas.
+- Biblioteca, busca, favoritos, playlists, fila, aleatório, repetição e volume.
+- Interface web com reprodutor HTMLAudio como fallback.
+- No Android nativo, integração com `capacitor-plugin-playlist`, Media3/ExoPlayer e serviço de mídia em primeiro plano.
+- Cópia das músicas importadas para o armazenamento interno do app, para que o serviço nativo possa reproduzi-las sem depender do WebView.
+- Metadados e controles de mídia fornecidos pelo serviço nativo para notificação e tela bloqueada.
 
-## ⚠️ Reprodução em segundo plano — NÃO concluída
-A Media Session API e o `<audio>` do WebView **não garantem** que a música continue com a
-tela apagada ou o app minimizado. O Android pode suspender o WebView a qualquer momento.
-Reprodução confiável em segundo plano **exige código nativo, que ainda não foi implementado
-nem compilado neste ambiente**.
+## Android (APK)
+O workflow **Android APK** em GitHub Actions:
+1. Instala as dependências.
+2. Compila a versão web.
+3. Gera o projeto Android do Capacitor.
+4. Sincroniza os plugins nativos.
+5. Compila um APK de depuração.
+6. Publica o APK como artefato chamado `neon-player-debug-apk`.
 
-## Android (APK) — integração nativa necessária
-1. `bun add @capacitor/core @capacitor/cli @capacitor/android` → `bunx cap add android`
-   (o build web precisa ser gerado como SPA estática em `webDir`).
-2. **Plugin nativo de reprodução** (Kotlin) usando **Media3 / ExoPlayer**:
-   - `MediaSessionService` (foreground service) com `foregroundServiceType="mediaPlayback"`.
-   - Notificação `MediaStyle` (gerada pelo Media3 `MediaNotification`) com play/pausa/anterior/próxima,
-     visível também na tela bloqueada.
-   - O JS envia a fila (URIs `content://` ou caminhos copiados para o armazenamento do app) e comandos;
-     o serviço é a fonte de verdade da reprodução e emite eventos (posição, faixa, estado) de volta.
-   - Nesse modo o `<audio>` do frontend deve ser desligado (a camada `src/lib/player.tsx` é o ponto de troca).
-3. **Áudio focus**: `AudioAttributes(USAGE_MEDIA, CONTENT_TYPE_MUSIC)` com `handleAudioFocus=true`
-   (pausa em ligações, abaixa volume em notificações).
-4. **Interrupções**: `ACTION_AUDIO_BECOMING_NOISY` (fone desconectado → pausar) via
-   `setHandleAudioBecomingNoisy(true)`; tratar erros do player sem derrubar o serviço.
-5. **Manifest / permissões (Android 13–15)**:
-   - `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (API 34+), `WAKE_LOCK`.
-   - `POST_NOTIFICATIONS` (API 33+, pedir em tempo de execução).
-   - `READ_MEDIA_AUDIO` (API 33+) ou `READ_EXTERNAL_STORAGE` (≤ API 32) se for ler a MediaStore;
-     alternativa sem permissão: seletor do sistema (SAF) + `takePersistableUriPermission`.
-   - Declarar o serviço com `android:exported="true"` e intent-filter `androidx.media3.session.MediaSessionService`.
-6. Desativar otimização de bateria não é necessário com foreground service correto.
+Depois que a execução terminar, o APK poderá ser baixado na seção **Artifacts** da execução do workflow.
 
-Até esses itens serem implementados e testados em aparelho real, **não considere a reprodução em
-segundo plano confiável**.
+## Estado de validação
+A integração nativa já está conectada ao código do player, mas ainda precisa passar pela compilação Android e por testes em um aparelho real. A compilação web, isoladamente, não comprova reprodução com a tela apagada.
+
+Verificar no aparelho:
+- reprodução com a tela bloqueada e com outro app em primeiro plano;
+- controles de play/pausa e faixa anterior/próxima na notificação e na tela bloqueada;
+- importação e reprodução de músicas offline após fechar e abrir o app;
+- pausa por interrupções de áudio e retomada correta.
+
+## Créditos
+**GF GAMEDEV**
