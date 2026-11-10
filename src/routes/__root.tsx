@@ -78,7 +78,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "theme-color", content: "#0f0f14" },
-      { title: "Neon Player" },
+      { title: "GF Play" },
       { name: "description", content: "Reprodutor de música offline e privado." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
