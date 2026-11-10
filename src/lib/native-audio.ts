@@ -13,7 +13,11 @@ const nativeTrackCache = new Map<string, AudioTrack>();
 export async function initializeNativeAudio() {
   if (!isAndroidNative() || initialized) return;
   if (!initialization) {
-    initialization = Playlist.initialize()
+    initialization = Playlist.setOptions({
+      verbose: false,
+      options: { icon: "ic_neon_notification" },
+    })
+      .then(() => Playlist.initialize())
       .then(() => { initialized = true; })
       .catch((error) => { initialization = undefined; throw error; });
   }
