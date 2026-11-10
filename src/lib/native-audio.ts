@@ -7,11 +7,17 @@ export const isAndroidNative = () =>
   Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
 
 let initialized = false;
+let initialization: Promise<void> | undefined;
+const nativeTrackCache = new Map<string, AudioTrack>();
 
 export async function initializeNativeAudio() {
   if (!isAndroidNative() || initialized) return;
-  await Playlist.initialize();
-  initialized = true;
+  if (!initialization) {
+    initialization = Playlist.initialize()
+      .then(() => { initialized = true; })
+      .catch((error) => { initialization = undefined; throw error; });
+  }
+  await initialization;
 }
 
 function extensionFor(track: Track) {
@@ -57,6 +63,9 @@ async function saveBlob(path: string, blob: Blob) {
 }
 
 export async function makeNativeAudioTrack(track: Track, audio: Blob): Promise<AudioTrack> {
+  const cacheKey = `${track.id}:${track.addedAt}:${audio.size}:${track.cover?.size ?? 0}`;
+  const cached = nativeTrackCache.get(cacheKey);
+  if (cached) return cached;
   const assetUrl = await saveBlob(
     `neon-audio/${track.id}.${extensionFor(track)}`,
     audio,
@@ -69,7 +78,7 @@ export async function makeNativeAudioTrack(track: Track, audio: Blob): Promise<A
       // Artwork is optional; audio playback must remain available.
     }
   }
-  return {
+  const nativeTrack: AudioTrack = {
     trackId: track.id,
     assetUrl,
     title: track.title,
@@ -78,6 +87,8 @@ export async function makeNativeAudioTrack(track: Track, audio: Blob): Promise<A
     albumArt,
     isStream: false,
   };
+  nativeTrackCache.set(cacheKey, nativeTrack);
+  return nativeTrack;
 }
 
 export { Playlist, RmxAudioStatusMessage };
