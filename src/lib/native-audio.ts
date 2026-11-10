@@ -42,7 +42,6 @@ function extensionFor(track: Track) {
     "audio/3gpp": "3gp",
     "audio/amr": "amr",
     "audio/x-flac": "flac",
-    "audio/x-wav": "wav",
     "audio/x-m4a": "m4a",
     "audio/aacp": "aac",
   };
